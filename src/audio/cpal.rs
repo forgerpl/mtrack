@@ -55,6 +55,17 @@ impl fmt::Display for Device {
     }
 }
 
+impl fmt::Debug for Device {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Device")
+            .field("name", &self.name)
+            .field("max_channels", &self.max_channels)
+            .field("host_id", &self.host_id)
+            .field("device", &self.device.name())
+            .finish()
+    }
+}
+
 impl Device {
     /// Lists cpal devices and produces the Device trait.
     pub fn list() -> Result<Vec<Box<dyn super::Device>>, Box<dyn Error>> {
@@ -75,25 +86,30 @@ impl Device {
 
         let mut devices: Vec<Device> = Vec::new();
         for host_id in cpal::available_hosts() {
-            let host_devices = cpal::host_from_id(host_id)?.devices()?;
+            let host_devices = match cpal::host_from_id(host_id)?.devices() {
+                Ok(d) => d,
+                Err(_) => continue,
+            };
 
-            for device in host_devices {
-                let mut max_channels = 0;
-                for output_config in device.supported_output_configs()? {
-                    if max_channels < output_config.channels() {
-                        max_channels = output_config.channels();
-                    }
-                }
+            devices.extend(host_devices.filter_map(|device| {
+                let max_channels = device
+                    .supported_output_configs()
+                    .ok()?
+                    .map(|c| c.channels())
+                    .max()
+                    .unwrap_or_default();
 
                 if max_channels > 0 {
-                    devices.push(Device {
-                        name: device.name()?,
+                    Some(Device {
+                        name: device.name().ok()?,
                         max_channels,
                         host_id,
                         device,
                     })
+                } else {
+                    None
                 }
-            }
+            }));
         }
 
         devices.sort_by_key(|device| device.name.to_string());
