@@ -25,6 +25,7 @@ use super::midi::{self, ToMidiEvent};
 pub(super) enum Controller {
     Midi(MidiController),
     Keyboard,
+    RestApi,
 }
 
 impl Controller {
@@ -47,6 +48,7 @@ impl Controller {
                 None => Err("No MIDI device found for MIDI controller.".into()),
             },
             Controller::Keyboard => Ok(Arc::new(crate::controller::keyboard::Driver::new())),
+            Controller::RestApi => Ok(Arc::new(crate::controller::restapi::Driver::new())),
         }
     }
 }

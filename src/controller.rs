@@ -11,18 +11,23 @@
 // You should have received a copy of the GNU General Public License along with
 // this program. If not, see <https://www.gnu.org/licenses/>.
 //
+use serde::Serialize;
 use std::error::Error;
 use std::io;
 use std::sync::Arc;
-use tokio::sync::mpsc;
 use tokio::task::JoinError;
-use tokio::{sync::mpsc::Sender, task::JoinHandle};
+use tokio::{
+    sync::mpsc::{self, Sender},
+    sync::watch,
+    task::JoinHandle,
+};
 use tracing::{error, info, span, Level};
 
-use crate::player::Player;
+use crate::player::{Player, PlayerState};
 
 pub mod keyboard;
 pub mod midi;
+pub mod restapi;
 
 /// Controller events that will trigger behavior in the player.
 #[derive(Debug)]
@@ -49,8 +54,54 @@ pub enum Event {
     Playlist,
 }
 
+/// Controller events that will trigger behavior in the player.
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "state")]
+#[serde(rename_all = "snake_case")]
+pub enum StatusEvent {
+    Stopped {
+        songname: String,
+        pos: usize,
+        playlist: Vec<String>,
+    },
+
+    /// Plays the track at the current position in the playlist.
+    Playing {
+        songname: String,
+        pos: usize,
+        playlist: Vec<String>,
+    },
+}
+
+impl From<PlayerState> for StatusEvent {
+    fn from(value: PlayerState) -> Self {
+        Self::from(&value)
+    }
+}
+
+impl From<&PlayerState> for StatusEvent {
+    fn from(value: &PlayerState) -> Self {
+        match value {
+            PlayerState::Playing { playlist, song } => StatusEvent::Playing {
+                songname: song.name.clone(),
+                pos: playlist.position(),
+                playlist: playlist.songs().to_vec(),
+            },
+            PlayerState::Stopped { playlist, song } => StatusEvent::Stopped {
+                songname: song.name.clone(),
+                pos: playlist.position(),
+                playlist: playlist.songs().to_vec(),
+            },
+        }
+    }
+}
+
 pub trait Driver: Send + Sync + 'static {
-    fn monitor_events(&self, events_tx: Sender<Event>) -> JoinHandle<Result<(), io::Error>>;
+    fn monitor_events(
+        &self,
+        events_tx: Sender<Event>,
+        status_rx: watch::Receiver<StatusEvent>,
+    ) -> JoinHandle<Result<(), io::Error>>;
 }
 
 /// Controls a playlist.
@@ -76,8 +127,11 @@ impl Controller {
         let span = span!(Level::INFO, "controller");
         let _enter = span.enter();
 
+        let mut player_state_rx = player.state_change_receiver();
+
         let (events_tx, mut events_rx) = mpsc::channel(1);
-        let join_handle = driver.monitor_events(events_tx);
+        let (status_tx, status_rx) = watch::channel(player.state().await.into());
+        let join_handle = driver.monitor_events(events_tx, status_rx);
 
         info!(
             first_song = player.get_playlist().current().name,
@@ -85,37 +139,47 @@ impl Controller {
         );
 
         loop {
-            if let Some(event) = events_rx.recv().await {
-                info!(event = format!("{:?}", event), "Received event.");
+            tokio::select! {
+                event = events_rx.recv() => {
+                    if let Some(event) = event {
+                        info!(event = format!("{:?}", event), "Received event.");
 
-                if let Err(e) = match event {
-                    Event::Play => player.play().await,
-                    Event::Prev => {
-                        if let Err(e) = player.prev().await {
-                            Err(e)
-                        } else {
-                            Ok(())
+                            if let Err(e) = match event {
+                                Event::Play => player.play().await,
+                                Event::Prev => {
+                                    if let Err(e) = player.prev().await {
+                                        Err(e)
+                                    } else {
+                                        Ok(())
+                                    }
+                                }
+                                Event::Next => {
+                                    if let Err(e) = player.next().await {
+                                        Err(e)
+                                    } else {
+                                        Ok(())
+                                    }
+                                }
+                                Event::Stop => player.stop().await,
+                                Event::AllSongs => player.switch_to_all_songs().await,
+                                Event::Playlist => player.switch_to_playlist().await,
+                            } {
+                                error!("Error talking to player: {}", e);
+                            }
+                    } else {
+                        info!("Controller closing.");
+                        if let Err(e) = join_handle.await {
+                            error!("Error waiting for event monitor to stop: {}", e);
                         }
+                        return;
                     }
-                    Event::Next => {
-                        if let Err(e) = player.next().await {
-                            Err(e)
-                        } else {
-                            Ok(())
-                        }
-                    }
-                    Event::Stop => player.stop().await,
-                    Event::AllSongs => player.switch_to_all_songs().await,
-                    Event::Playlist => player.switch_to_playlist().await,
-                } {
-                    error!("Error talking to player: {}", e);
                 }
-            } else {
-                info!("Controller closing.");
-                if let Err(e) = join_handle.await {
-                    error!("Error waiting for event monitor to stop: {}", e);
+
+                Ok(()) = player_state_rx.changed() => {
+                    let state = (*player_state_rx.borrow_and_update()).clone();
+                    info!("Got player state change {state:#?}");
+                    let _ = status_tx.send(state.into());
                 }
-                return;
             }
         }
     }
@@ -131,11 +195,14 @@ mod test {
         sync::{Arc, Barrier, Mutex},
     };
 
-    use tokio::{sync::mpsc::Sender, task::JoinHandle};
+    use tokio::{
+        sync::{mpsc::Sender, watch},
+        task::JoinHandle,
+    };
 
     use crate::{audio, config, player::Player, playlist::Playlist, test::eventually};
 
-    use super::{Driver, Event};
+    use super::{Driver, Event, StatusEvent};
 
     #[derive(Debug)]
     enum TestEvent {
@@ -179,7 +246,11 @@ mod test {
     }
 
     impl Driver for TestDriver {
-        fn monitor_events(&self, events_tx: Sender<Event>) -> JoinHandle<Result<(), io::Error>> {
+        fn monitor_events(
+            &self,
+            events_tx: Sender<Event>,
+            status_rx: watch::Receiver<StatusEvent>,
+        ) -> JoinHandle<Result<(), io::Error>> {
             let barrier = self.barrier.clone();
             let current_event = self.current_event.clone();
             let result: JoinHandle<Result<(), io::Error>> =

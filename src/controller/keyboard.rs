@@ -13,10 +13,10 @@
 //
 use std::io::{self, Write};
 
-use tokio::{sync::mpsc::Sender, task::JoinHandle};
+use tokio::{sync::mpsc::Sender, sync::watch, task::JoinHandle};
 use tracing::{info, span, Level};
 
-use super::Event;
+use super::{Event, StatusEvent};
 
 /// A controller that controls a player using the keyboard.
 pub struct Driver {}
@@ -28,7 +28,11 @@ impl Driver {
 }
 
 impl super::Driver for Driver {
-    fn monitor_events(&self, events_tx: Sender<Event>) -> JoinHandle<Result<(), io::Error>> {
+    fn monitor_events(
+        &self,
+        events_tx: Sender<Event>,
+        _status_rx: watch::Receiver<StatusEvent>,
+    ) -> JoinHandle<Result<(), io::Error>> {
         tokio::task::spawn_blocking(move || {
             let span = span!(Level::INFO, "keyboard driver");
             let _enter = span.enter();

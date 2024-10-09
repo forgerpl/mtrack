@@ -16,13 +16,14 @@ use std::{io, sync::Arc};
 use midly::live::LiveEvent;
 use tokio::{
     sync::mpsc::{self, Sender},
+    sync::watch,
     task::JoinHandle,
 };
 use tracing::{error, info, span, Level};
 
 use crate::midi;
 
-use super::Event;
+use super::{Event, StatusEvent};
 
 /// A controller that controls a player using MIDI.
 pub struct Driver {
@@ -64,7 +65,11 @@ impl Driver {
 }
 
 impl super::Driver for Driver {
-    fn monitor_events(&self, events_tx: Sender<Event>) -> JoinHandle<Result<(), io::Error>> {
+    fn monitor_events(
+        &self,
+        events_tx: Sender<Event>,
+        _status_rx: watch::Receiver<StatusEvent>,
+    ) -> JoinHandle<Result<(), io::Error>> {
         let (midi_events_tx, mut midi_events_rx) = mpsc::channel::<Vec<u8>>(10);
         let device = self.device.clone();
         let play = self.play;

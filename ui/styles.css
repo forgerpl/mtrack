@@ -1,0 +1,99 @@
+.player-container {
+  max-width: 600px;
+  margin: 40px auto;
+  padding: 20px;
+  background-color: #0F172A;
+  border-radius: 10px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.player-container h1 {
+  color: #fff;
+  font-size: 24px;
+  margin-bottom: 20px;
+}
+
+button {
+  background-color: #1C2739;
+  border-radius: 10px;
+  padding: 128px 16px 8px 16px;
+  font-size: 14px;
+  cursor: pointer;
+  color: #fff;
+  border: none;
+  outline: none;
+  height: 128px;
+  vertical-align: text-bottom;
+  min-width: 128px;
+}
+
+button:hover {
+  background-color: #6b727a;
+}
+
+button.active {
+  background-color: #7f8489;
+}
+
+.song-info {
+  margin-top: 20px;
+  font-size: 16px;
+  color: #ccc;
+}
+
+.playlist-name {
+  font-weight: bold;
+  margin-bottom: 10px;
+}
+
+#playlist-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+#playlist-list li {
+  font-size: 14px;
+  color: #ccc;
+}
+
+#playlist-list li.active {
+  font-weight: bold;
+  list-style-type: "⏵";
+}
+
+#player-state {
+  margin-top: 20px;
+  font-size: 16px;
+  color: #ccc;
+}
+
+#play-button {
+  background-color: #c026d3;
+  mask-image: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMjgiIGhlaWdodD0iMTI4IiB2aWV3Qm94PSIwIDAgMjQgMjQiPjxwYXRoIGZpbGw9ImN1cnJlbnRDb2xvciIgZD0iTTYgNHYxNmExIDEgMCAwIDAgMS41MjQuODUybDEzLThhMSAxIDAgMCAwIDAtMS43MDRsLTEzLThBMSAxIDAgMCAwIDYgNCIvPjwvc3ZnPg==);
+}
+
+#stop-button {
+  background-color: #c026d3;
+  mask-image: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMjgiIGhlaWdodD0iMTI4IiB2aWV3Qm94PSIwIDAgMjQgMjQiPjxwYXRoIGZpbGw9IiNjMDI2ZDMiIGQ9Ik0xNyA0SDdhMyAzIDAgMCAwLTMgM3YxMGEzIDMgMCAwIDAgMyAzaDEwYTMgMyAwIDAgMCAzLTNWN2EzIDMgMCAwIDAtMy0zIi8+PC9zdmc+);
+}
+
+#prev-button {
+  background-color: #c026d3;
+  mask-image: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMjgiIGhlaWdodD0iMTI4IiB2aWV3Qm94PSIwIDAgMjQgMjQiPjxwYXRoIGZpbGw9IiNjMDI2ZDMiIGQ9Im0xOS40OTYgNC4xMzZsLTEyIDdhMSAxIDAgMCAwIDAgMS43MjhsMTIgN0ExIDEgMCAwIDAgMjEgMTlWNWExIDEgMCAwIDAtMS41MDQtLjg2NE00IDRhMSAxIDAgMCAxIC45OTMuODgzTDUgNXYxNGExIDEgMCAwIDEtMS45OTMuMTE3TDMgMTlWNWExIDEgMCAwIDEgMS0xIi8+PC9zdmc+);
+}
+
+#next-button {
+  background-color: #c026d3;
+  mask-image: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMjgiIGhlaWdodD0iMTI4IiB2aWV3Qm94PSIwIDAgMjQgMjQiPjxwYXRoIGZpbGw9IiNjMDI2ZDMiIGZpbGwtcnVsZT0iZXZlbm9kZCIgZD0iTTE3LjUgOS40MDJjMiAxLjE1NSAyIDQuMDQxIDAgNS4xOTZsLTkgNS4xOTZjLTIgMS4xNTUtNC41LS4yODgtNC41LTIuNTk4VjYuODA0YzAtMi4zMSAyLjUtMy43NTMgNC41LTIuNTk4ek0yMSA1YTEgMSAwIDEgMC0yIDB2MTRhMSAxIDAgMSAwIDIgMHoiIGNsaXAtcnVsZT0iZXZlbm9kZCIvPjwvc3ZnPg==);
+}
+
+#all-button {
+  background-color: #0284c7;
+  mask-image: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMjgiIGhlaWdodD0iMTI4IiB2aWV3Qm94PSIwIDAgMjQgMjQiPjxwYXRoIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2MwMjZkMyIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBzdHJva2Utd2lkdGg9IjIiIGQ9Ik0xNCAxNGEzIDMgMCAxIDAgMyAzbTAtNFY0aDRtLTggMUg5TTUgNUgzbTAgNGg2bTAgNEgzTTMgM2wxOCAxOCIvPjwvc3ZnPg==);
+}
+
+#playlist-button {
+  background-color: #0284c7;
+  mask-image: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMjgiIGhlaWdodD0iMTI4IiB2aWV3Qm94PSIwIDAgMjQgMjQiPjxwYXRoIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2MwMjZkMyIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBzdHJva2Utd2lkdGg9IjIiIGQ9Ik0xMSAxN2EzIDMgMCAxIDAgNiAwYTMgMyAwIDEgMC02IDBtNiAwVjRoNG0tOCAxSDNtMCA0aDEwbS00IDRIMyIvPjwvc3ZnPg==);
+}

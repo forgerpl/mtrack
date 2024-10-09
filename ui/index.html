@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Music Player</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="player-container">
+    <h1 id="current-song"></h1>
+    <div id="control">
+      <button id="prev-button">Previous</button>
+      <button id="play-button">Play</button>
+      <button id="stop-button">Stop</button>
+      <button id="next-button">Next</button>
+    </div>
+    <div id="playlist-mode">
+      <button id="all-button">All Songs</button>
+      <button id="playlist-button">Configured Playlist</button>
+    </div>
+    <p id="player-state"></p>
+    <div class="song-info">
+      <p class="playlist-name" id="playlist-name"></p>
+      <ul id="playlist-list"></ul>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

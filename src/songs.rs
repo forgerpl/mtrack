@@ -54,6 +54,20 @@ pub struct Song {
     pub tracks: Vec<Track>,
 }
 
+impl fmt::Debug for Song {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Song")
+            .field("name", &self.name)
+            .field("midi_file", &self.midi_file)
+            .field("num_channels", &self.num_channels)
+            .field("sample_rate", &self.sample_rate)
+            .field("bits_per_sample", &self.bits_per_sample)
+            .field("duration", &self.duration)
+            .field("tracks", &self.tracks.len())
+            .finish()
+    }
+}
+
 /// A simple sample for songs. Boils down to i32 or f32, which we can be reasonably assured that
 /// hound is able to read.
 pub trait Sample:
@@ -546,6 +560,14 @@ pub struct MidiSheet {
 pub struct Songs {
     /// A mapping of the songs in the repository.
     songs: HashMap<String, Arc<Song>>,
+}
+
+impl fmt::Debug for Songs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_map()
+            .entries(self.songs.iter().map(|(name, song)| (name, &song.name)))
+            .finish()
+    }
 }
 
 impl Songs {

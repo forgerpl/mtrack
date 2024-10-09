@@ -22,12 +22,28 @@ use std::{
 };
 
 use tokio::{
-    sync::{oneshot, Mutex},
+    sync::{
+        oneshot,
+        watch::{self, Receiver, Sender},
+        Mutex,
+    },
     task::JoinHandle,
 };
 use tracing::{error, info, span, Level, Span};
 
 use crate::{audio, midi, playlist::Playlist, playsync::CancelHandle, songs::Song};
+
+#[derive(Debug, Clone)]
+pub enum PlayerState {
+    Playing {
+        playlist: Arc<Playlist>,
+        song: Arc<Song>,
+    },
+    Stopped {
+        playlist: Arc<Playlist>,
+        song: Arc<Song>,
+    },
+}
 
 struct PlayHandles {
     join: JoinHandle<()>,
@@ -53,6 +69,8 @@ pub struct Player {
     /// After stop is set, this will be set to true. This will prevent stop from being run again until
     /// it is unset, which should be handled by a cleanup async process after playback finishes.
     stop_run: Arc<AtomicBool>,
+    state_change_tx: Sender<PlayerState>,
+    state_change_rx: Receiver<PlayerState>,
     /// The logging span.
     span: Span,
 }
@@ -66,6 +84,13 @@ impl Player {
         playlist: Arc<Playlist>,
         all_songs_playlist: Arc<Playlist>,
     ) -> Player {
+        let song = playlist.current();
+
+        let (state_change_tx, state_change_rx) = watch::channel(PlayerState::Stopped {
+            playlist: Arc::clone(&playlist),
+            song,
+        });
+
         let player = Player {
             device,
             mappings: Arc::new(mappings),
@@ -75,6 +100,8 @@ impl Player {
             use_all_songs: AtomicBool::new(false),
             join: Arc::new(Mutex::new(None)),
             stop_run: Arc::new(AtomicBool::new(false)),
+            state_change_tx,
+            state_change_rx,
             span: span!(Level::INFO, "player"),
         };
 
@@ -84,70 +111,103 @@ impl Player {
         player
     }
 
+    pub fn state_change_receiver(&self) -> Receiver<PlayerState> {
+        self.state_change_rx.clone()
+    }
+
+    pub async fn state(&self) -> PlayerState {
+        let join = self.join.lock().await;
+        let playlist = self.get_playlist().clone();
+        let song = playlist.current().clone();
+
+        if join.is_some() {
+            PlayerState::Playing { playlist, song }
+        } else {
+            PlayerState::Stopped { playlist, song }
+        }
+    }
+
+    async fn emit_state_change(&self) {
+        self.state_change_tx.send(self.state().await).unwrap()
+    }
+
     /// Plays the song at the current position. Returns true if the song was submitted successfully.
     pub async fn play(&self) -> Result<(), Box<dyn Error>> {
         let _enter = self.span.enter();
+        {
+            let mut join = self.join.lock().await;
 
-        let mut join = self.join.lock().await;
+            let playlist = self.get_playlist().clone();
+            if join.is_some() {
+                info!(
+                    current_song = playlist.current().name,
+                    "Player is already playing a song."
+                );
+                return Ok(());
+            }
 
-        let playlist = self.get_playlist().clone();
-        if join.is_some() {
-            info!(
-                current_song = playlist.current().name,
-                "Player is already playing a song."
-            );
-            return Ok(());
+            let song = playlist.current();
+            let cancel_handle = CancelHandle::new();
+            let (play_tx, play_rx) = oneshot::channel::<()>();
+
+            let join_handle = {
+                let song = song.clone();
+                let device = self.device.clone();
+                let midi_device = self.midi_device.clone();
+                let cancel_handle = cancel_handle.clone();
+                let mappings = self.mappings.clone();
+                tokio::task::spawn_blocking(move || {
+                    Player::play_files(device, mappings, midi_device, song, cancel_handle, play_tx);
+                })
+            };
+            *join = Some(PlayHandles {
+                join: join_handle,
+                cancel: cancel_handle,
+            });
+
+            let join_mutex = self.join.clone();
+            let stop_run = self.stop_run.clone();
+            let song = song.clone();
+            let midi_device = self.midi_device.clone();
+            let state_change_tx = self.state_change_tx.clone();
+
+            tokio::spawn(async move {
+                if let Err(e) = play_rx.await {
+                    error!(err = e.to_string(), "Error receiving signal");
+                    return;
+                }
+                let mut join = join_mutex.lock().await;
+
+                let mut cancelled = false;
+                // Only move to the next playlist entry if this wasn't cancelled.
+                if let Some(join) = join.as_ref() {
+                    cancelled = join.cancel.is_cancelled();
+                    if !cancelled {
+                        Player::next_and_emit(
+                            midi_device.clone(),
+                            Arc::clone(&playlist),
+                            state_change_tx.clone(),
+                        );
+                    }
+                }
+
+                info!(
+                    song = song.name,
+                    cancelled = cancelled,
+                    "Song finished playing."
+                );
+
+                state_change_tx
+                    .send(PlayerState::Stopped { playlist, song })
+                    .unwrap();
+
+                // Remove the handles and reset stop run.
+                *join = None;
+                stop_run.store(false, Ordering::Relaxed);
+            });
         }
 
-        let song = playlist.current();
-        let cancel_handle = CancelHandle::new();
-        let (play_tx, play_rx) = oneshot::channel::<()>();
-
-        let join_handle = {
-            let song = song.clone();
-            let device = self.device.clone();
-            let midi_device = self.midi_device.clone();
-            let cancel_handle = cancel_handle.clone();
-            let mappings = self.mappings.clone();
-            tokio::task::spawn_blocking(move || {
-                Player::play_files(device, mappings, midi_device, song, cancel_handle, play_tx);
-            })
-        };
-        *join = Some(PlayHandles {
-            join: join_handle,
-            cancel: cancel_handle,
-        });
-
-        let join_mutex = self.join.clone();
-        let stop_run = self.stop_run.clone();
-        let song = song.clone();
-        let midi_device = self.midi_device.clone();
-        tokio::spawn(async move {
-            if let Err(e) = play_rx.await {
-                error!(err = e.to_string(), "Error receiving signal");
-                return;
-            }
-            let mut join = join_mutex.lock().await;
-
-            let mut cancelled = false;
-            // Only move to the next playlist entry if this wasn't cancelled.
-            if let Some(join) = join.as_ref() {
-                cancelled = join.cancel.is_cancelled();
-                if !cancelled {
-                    Player::next_and_emit(midi_device.clone(), playlist);
-                }
-            }
-
-            info!(
-                song = song.name,
-                cancelled = cancelled,
-                "Song finished playing."
-            );
-
-            // Remove the handles and reset stop run.
-            *join = None;
-            stop_run.store(false, Ordering::Relaxed);
-        });
+        self.emit_state_change().await;
 
         Ok(())
     }
@@ -255,7 +315,11 @@ impl Player {
             );
             return Ok(current);
         }
-        Ok(Player::next_and_emit(self.midi_device.clone(), playlist))
+        Ok(Player::next_and_emit(
+            self.midi_device.clone(),
+            playlist,
+            self.state_change_tx.clone(),
+        ))
     }
 
     /// Prev goes to the previous entry in the playlist.
@@ -270,7 +334,11 @@ impl Player {
             );
             return Ok(current);
         }
-        Ok(Player::prev_and_emit(self.midi_device.clone(), playlist))
+        Ok(Player::prev_and_emit(
+            self.midi_device.clone(),
+            playlist,
+            self.state_change_tx.clone(),
+        ))
     }
 
     /// Stop will stop a song if a song is playing.
@@ -301,6 +369,7 @@ impl Player {
 
         // Cancel the playback.
         join.cancel.cancel();
+
         Ok(())
     }
 
@@ -353,8 +422,15 @@ impl Player {
     fn prev_and_emit(
         midi_device: Option<Arc<dyn midi::Device>>,
         playlist: Arc<Playlist>,
+        state_change_tx: Sender<PlayerState>,
     ) -> Arc<Song> {
         let song = playlist.prev();
+        state_change_tx
+            .send(PlayerState::Stopped {
+                playlist,
+                song: Arc::clone(&song),
+            })
+            .unwrap();
         Player::emit_midi_event(midi_device, song.clone());
         song
     }
@@ -363,8 +439,15 @@ impl Player {
     fn next_and_emit(
         midi_device: Option<Arc<dyn midi::Device>>,
         playlist: Arc<Playlist>,
+        state_change_tx: Sender<PlayerState>,
     ) -> Arc<Song> {
         let song = playlist.next();
+        state_change_tx
+            .send(PlayerState::Stopped {
+                playlist,
+                song: Arc::clone(&song),
+            })
+            .unwrap();
         Player::emit_midi_event(midi_device, song.clone());
         song
     }

@@ -44,6 +44,19 @@ impl fmt::Display for Playlist {
     }
 }
 
+impl fmt::Debug for Playlist {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Playlist")
+            .field("songs", &self.songs)
+            .field(
+                "position",
+                &self.position.try_read().map(|pos| *pos).unwrap_or_default(),
+            )
+            .field("registry", &self.registry)
+            .finish()
+    }
+}
+
 impl Playlist {
     /// Creates a new playlist.
     pub fn new(song_names: Vec<String>, registry: Arc<Songs>) -> Result<Playlist, Box<dyn Error>> {
@@ -58,6 +71,14 @@ impl Playlist {
             registry: Arc::clone(&registry),
             span: span!(Level::INFO, "playlist"),
         })
+    }
+
+    pub fn songs(&self) -> &[String] {
+        &self.songs
+    }
+
+    pub fn position(&self) -> usize {
+        *(self.position.read().unwrap())
     }
 
     /// Creates an alphabetized playlist from all available songs.
